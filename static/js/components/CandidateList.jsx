@@ -35,6 +35,7 @@ import ScanningPageCandidateAnnotations, {
   getAnnotationValueString,
 } from "./ScanningPageCandidateAnnotations";
 import EditSourceGroups from "./EditSourceGroups";
+import { ra_to_hours, dec_to_dms } from "../units";
 
 const VegaPlot = React.lazy(() =>
   import(/* webpackChunkName: "VegaPlot" */ "./VegaPlot")
@@ -102,6 +103,10 @@ const useStyles = makeStyles((theme) => ({
   helpButton: {
     display: "inline-block",
   },
+  position: {
+    fontWeight: "bold",
+    fontSize: "110%",
+  },
   formControl: {
     margin: theme.spacing(1),
     minWidth: 120,
@@ -137,6 +142,16 @@ const getMuiTheme = (theme) =>
     },
   });
 
+const getMostRecentClassification = (classifications) => {
+  // Display the most recent non-zero probability class
+  const filteredClasses = classifications.filter((i) => i.probability > 0);
+  const sortedClasses = filteredClasses.sort((a, b) =>
+    a.modified < b.modified ? 1 : -1
+  );
+
+  return `${sortedClasses[0].classification}`;
+};
+
 const getMuiPopoverTheme = () =>
   createMuiTheme({
     overrides: {
@@ -153,6 +168,7 @@ const defaultNumPerPage = 25;
 const CustomSortToolbar = ({
   selectedAnnotationSortOptions,
   rowsPerPage,
+  filterFormData,
   setQueryInProgress,
   loaded,
 }) => {
@@ -169,13 +185,20 @@ const CustomSortToolbar = ({
     setSortOrder(newSortOrder);
 
     setQueryInProgress(true);
-    const data = {
+    let data = {
       pageNumber: 1,
       numPerPage: rowsPerPage,
       sortByAnnotationOrigin: selectedAnnotationSortOptions.origin,
       sortByAnnotationKey: selectedAnnotationSortOptions.key,
       sortByAnnotationOrder: newSortOrder,
     };
+
+    if (filterFormData !== null) {
+      data = {
+        ...data,
+        ...filterFormData,
+      };
+    }
 
     await dispatch(
       candidatesActions.setCandidatesAnnotationSortOptions({
@@ -218,6 +241,7 @@ CustomSortToolbar.propTypes = {
   }),
   setQueryInProgress: PropTypes.func.isRequired,
   rowsPerPage: PropTypes.number.isRequired,
+  filterFormData: PropTypes.shape({}).isRequired,
   loaded: PropTypes.bool.isRequired,
 };
 
@@ -267,6 +291,10 @@ const CandidateList = () => {
 
   const availableAnnotationsInfo = useSelector(
     (state) => state.candidates.annotationsInfo
+  );
+
+  const filterFormData = useSelector(
+    (state) => state.candidates.filterFormData
   );
 
   const dispatch = useDispatch();
@@ -372,6 +400,13 @@ const CandidateList = () => {
         sortByAnnotationOrigin: selectedAnnotationSortOptions.origin,
         sortByAnnotationKey: selectedAnnotationSortOptions.key,
         sortByAnnotationOrder: selectedAnnotationSortOptions.order,
+      };
+    }
+
+    if (filterFormData !== null) {
+      data = {
+        ...data,
+        ...filterFormData,
       };
     }
 
@@ -495,9 +530,12 @@ const CandidateList = () => {
         )}
         <div className={classes.infoItem}>
           <b>Coordinates: </b>
-          <span>
-            {candidateObj.ra}&nbsp;&nbsp;{candidateObj.dec}
+          <span className={classes.position}>
+            {ra_to_hours(candidateObj.ra)} &nbsp;
+            {dec_to_dms(candidateObj.dec)}
           </span>
+          &nbsp; (&alpha;,&delta;= {candidateObj.ra.toFixed(3)}, &nbsp;
+          {candidateObj.dec.toFixed(3)})
         </div>
         <div className={classes.infoItem}>
           <b>Gal. Coords (l,b): </b>
@@ -506,6 +544,15 @@ const CandidateList = () => {
             {candidateObj.gal_lat.toFixed(3)}
           </span>
         </div>
+        {candidateObj.classifications &&
+          candidateObj.classifications.length > 0 && (
+            <div className={classes.infoItem}>
+              <b>Classification: </b>
+              <span>
+                {getMostRecentClassification(candidateObj.classifications)}
+              </span>
+            </div>
+          )}
         {selectedAnnotationSortOptions !== null &&
           candidateHasAnnotationWithSelectedKey(candidateObj) && (
             <div className={classes.infoItem}>
@@ -603,6 +650,13 @@ const CandidateList = () => {
       data = {
         ...data,
         annotationFilterList: filterListQueryStrings.join(),
+      };
+    }
+
+    if (filterFormData !== null) {
+      data = {
+        ...data,
+        ...filterFormData,
       };
     }
 
@@ -809,6 +863,7 @@ const CandidateList = () => {
       <CustomSortToolbar
         selectedAnnotationSortOptions={selectedAnnotationSortOptions}
         rowsPerPage={rowsPerPage}
+        filterFormData={filterFormData}
         setQueryInProgress={setQueryInProgress}
         loaded={!queryInProgress}
       />
